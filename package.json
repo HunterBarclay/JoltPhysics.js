@@ -1,7 +1,7 @@
 {
-  "name": "jolt-physics",
+  "name": "@barclah/jolt-physics",
   "version": "0.24.0",
-  "description": "A WebAssembly port of JoltPhysics, a rigid body physics and collision detection library, suitable for games and VR applications",
+  "description": "A WebAssembly port of JoltPhysics, a rigid body physics and collision detection library, suitable for games and VR applications. Forked by Hunter Barclay to use for Synthesis.",
   "type": "module",
   "main": "dist/jolt-physics.wasm-compat.js",
   "types": "dist/jolt-physics.wasm-compat.d.ts",
@@ -22,6 +22,10 @@
       "types": "./dist/jolt-physics.d.ts",
       "default": "./dist/jolt-physics.js"
     },
+    "./auto-wasm": {
+      "types": "./src/jolt-auto-wasm.d.ts",
+      "default": "./src/jolt-auto-wasm.js"
+    },
     "./jolt-physics.wasm.wasm": "./dist/jolt-physics.wasm.wasm",
     "./package.json": "./package.json"
   },
@@ -29,9 +33,9 @@
     "build": "sh build.sh",
     "examples": "http-server ./Examples"
   },
-  "homepage": "https://github.com/jrouwe/JoltPhysics.js",
-  "repository": "https://github.com/jrouwe/JoltPhysics.js.git",
-  "author": "jrouwe",
+  "homepage": "https://github.com/KyroVibe/JoltPhysics.js",
+  "repository": "https://github.com/KyroVibe/JoltPhysics.js.git",
+  "author": "barclah",
   "license": "MIT",
   "files": [
     "README.md",
