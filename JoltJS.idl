@@ -3543,3 +3543,7 @@ interface JoltInterface {
 	static unsigned long long sGetTotalMemory();
 	static unsigned long long sGetFreeMemory();
 };
+
+interface SynthesisHelper {
+	ConvexHullShape BuildConvexHullShape([Const, Ref] ConvexHullShapeSettings settings);
+}

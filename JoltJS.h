@@ -731,3 +731,12 @@ public:
 	/// Value used to create gaps in the height field
 	static constexpr float	cNoCollisionValue = HeightFieldShapeConstants::cNoCollisionValue;
 };
+
+class SynthesisHelper {
+public:
+	ConvexHullShape* BuildConvexHullShape(const ConvexHullShapeSettings &settings) {
+		Result<Ref<Shape>> res;
+		auto shape = new ConvexHullShape(settings, res);
+		return shape;
+	}
+};
