@@ -3545,6 +3545,7 @@ interface JoltInterface {
 };
 
 interface SynthesisHelper {
+	void SynthesisHelper();
 	ConvexHullShape BuildConvexHullShape([Const, Ref] ConvexHullShapeSettings settings);
 	ArrayFloat GetMat44Array([Const, Ref] Mat44 mat);
 };
