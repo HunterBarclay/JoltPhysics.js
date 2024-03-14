@@ -739,4 +739,31 @@ public:
 		auto shape = new ConvexHullShape(settings, res);
 		return shape;
 	}
+
+	ArrayFloat* GetMat44Array(const Mat44& mat) {
+		auto arr = new ArrayFloat();
+		Vec4 columns[4];
+		columns[0] = mat.GetColumn4(0);
+		columns[1] = mat.GetColumn4(1);
+		columns[2] = mat.GetColumn4(2);
+		columns[3] = mat.GetColumn4(3);
+		(*arr)[0] = columns[0].GetX();
+		(*arr)[1] = columns[1].GetX();
+		(*arr)[2] = columns[2].GetX();
+		(*arr)[3] = columns[3].GetX();
+		(*arr)[4] = columns[0].GetY();
+		(*arr)[5] = columns[1].GetY();
+		(*arr)[6] = columns[2].GetY();
+		(*arr)[7] = columns[3].GetY();
+		(*arr)[8] = columns[0].GetZ();
+		(*arr)[9] = columns[1].GetZ();
+		(*arr)[10] = columns[2].GetZ();
+		(*arr)[11] = columns[3].GetZ();
+		(*arr)[12] = columns[0].GetW();
+		(*arr)[13] = columns[1].GetW();
+		(*arr)[14] = columns[2].GetW();
+		(*arr)[15] = columns[3].GetW();
+
+		return arr;
+	}
 };
