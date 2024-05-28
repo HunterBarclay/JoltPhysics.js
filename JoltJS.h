@@ -766,4 +766,12 @@ public:
 
 		return arr;
 	}
+
+	ArrayWheelSettings* ConstructArrayWheelSettings() {
+		return new ArrayWheelSettings();
+	}
+
+	VehicleConstraint* ConstructVehicleConstraint(Body& body, VehicleConstraintSettings& settings) {
+		return new VehicleConstraint(body, settings);
+	}
 };
