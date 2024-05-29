@@ -118,9 +118,10 @@ set(EMCC_ARGS
   ${ENABLE_SIMD_FLAG})
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+	message("Compiling with debug")
 	set(EMCC_ARGS 
 		${EMCC_ARGS} 
-		-g
+		-g3
 		-s ASSERTIONS)
 else()
 	set(EMCC_ARGS 
