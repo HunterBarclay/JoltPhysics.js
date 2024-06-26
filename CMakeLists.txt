@@ -86,7 +86,7 @@ FetchContent_MakeAvailable(JoltPhysics)
 set(TOTAL_MEMORY 67108864 CACHE STRING "Total Memory")
 
 # Enable for resizable heap, with some amount of slowness
-set(ALLOW_MEMORY_GROWTH 0 CACHE STRING "Allow Memory Growth")
+set(ALLOW_MEMORY_GROWTH 1 CACHE STRING "Allow Memory Growth")
 
 # Enable memory profiler
 if (ENABLE_MEMORY_PROFILER)
