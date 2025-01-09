@@ -14,10 +14,10 @@ rm -rf ./dist
 mkdir dist
 
 cmake -B Build/$BUILD_TYPE/ST -DCMAKE_BUILD_TYPE=$BUILD_TYPE "${@}"
-cmake --build Build/$BUILD_TYPE/ST -j`nproc`
+cmake --build Build/$BUILD_TYPE/ST
 
 cmake -B Build/$BUILD_TYPE/MT -DENABLE_MULTI_THREADING=ON -DENABLE_SIMD=ON -DCMAKE_BUILD_TYPE=$BUILD_TYPE "${@}"
-cmake --build Build/$BUILD_TYPE/MT -j`nproc`
+cmake --build Build/$BUILD_TYPE/MT
 
 cat > ./dist/jolt-physics.d.ts << EOF
 import Jolt from "./types";
