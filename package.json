@@ -1,6 +1,6 @@
 {
   "name": "@barclah/jolt-physics",
-  "version": "0.24.0",
+  "version": "0.24.1",
   "description": "A WebAssembly port of JoltPhysics, a rigid body physics and collision detection library, suitable for games and VR applications. Forked by Hunter Barclay to use for Synthesis.",
   "type": "module",
   "main": "dist/jolt-physics.wasm-compat.js",
