@@ -36,8 +36,13 @@ set(FLOATING_POINT_EXCEPTIONS_ENABLED OFF)
 # Turn off LTO
 set(INTERPROCEDURAL_OPTIMIZATION OFF)
 
-# Turn on symbols
-set(GENERATE_DEBUG_SYMBOLS ON)
+# Override debug symbols
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+	set(GENERATE_DEBUG_SYMBOLS ON)
+	set(JPH_DEBUG_SYMBOL_FORMAT "source-map" CACHE STRING "")
+else()
+	set(GENERATE_DEBUG_SYMBOLS OFF)
+endif()
 
 # Turn off custom allocator
 set(DISABLE_CUSTOM_ALLOCATOR ON)
@@ -52,14 +57,24 @@ set(OBJECT_LAYER_BITS 32)
 if (ENABLE_MULTI_THREADING)
 	set(MULTI_THREADED_FLAG 
 		-pthread 
+		--post-js ${CMAKE_CURRENT_SOURCE_DIR}/multi-threaded.js
 		-s SHARED_MEMORY)
 	set(ENVIRONMENT_FLAG
 		-s ENVIRONMENT='web,node,worker' 
 		-s PTHREAD_POOL_SIZE=16)
 	set(CMAKE_CXX_FLAGS "-pthread -s SHARED_MEMORY")
+	set(OUTPUT_BASE_NAME "${OUTPUT_FOLDER}jolt-physics.multithread")
+	set(REMOVE_THREAD_LOCAL "")
 else()
 	set(MULTI_THREADED_FLAG "")
 	set(ENVIRONMENT_FLAG "-s ENVIRONMENT='web,node'")
+	set(OUTPUT_BASE_NAME "${OUTPUT_FOLDER}jolt-physics")
+	# Tried to keep this multi-platform since windows/mac/linux all treat -i different,
+	# though this creates extra backup file in a non-tracked folder.
+	# Removing 'thread_local' from the generated binding code fixes a small 'residual' allocation
+	# in the proper_cleanup.html demo and it is not needed when in single threaded mode.
+	# See: https://github.com/jrouwe/JoltPhysics.js/discussions/222#discussioncomment-11381106	
+	set(REMOVE_THREAD_LOCAL sed -i.bak -e "s:thread_local::g" glue.cpp)
 endif()
 
 # Enable SIMD flags
@@ -67,9 +82,10 @@ if (ENABLE_SIMD)
 	set(ENABLE_SIMD_FLAG 
 		-msimd128 
 		-msse4.2)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse4.2")
+	set(USE_WASM_SIMD ON)
 else()
 	set(ENABLE_SIMD_FLAG "")
+	set(USE_WASM_SIMD OFF)
 endif()
 
 # Include Jolt
@@ -77,7 +93,7 @@ include(FetchContent)
 FetchContent_Declare(
         JoltPhysics
         GIT_REPOSITORY "https://github.com/jrouwe/JoltPhysics"
-        GIT_TAG "bac9d7301d28280e69062afd9e2705821435b4f9"
+        GIT_TAG "636b0802665880bb617716a8b03e7de79a2b3dfd"
 		SOURCE_SUBDIR "Build"
 )
 FetchContent_MakeAvailable(JoltPhysics)
@@ -99,10 +115,13 @@ else()
 endif()
 
 set(EMCC_ARGS
+  -fno-rtti
+  -fno-exceptions
   --extern-pre-js ${JOLT_FRONT_MATTER_FILE}
   --post-js glue.js
   --closure=1
   ${MULTI_THREADED_FLAG}
+  --post-js ${CMAKE_CURRENT_SOURCE_DIR}/helpers.js
   -s ALLOW_MEMORY_GROWTH=${ALLOW_MEMORY_GROWTH}
   -s ALLOW_TABLE_GROWTH=1
   ${ENVIRONMENT_FLAG}
@@ -121,7 +140,7 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 	message("Compiling with debug")
 	set(EMCC_ARGS 
 		${EMCC_ARGS} 
-		-g3
+		-g${JPH_DEBUG_SYMBOL_FORMAT}
 		-s ASSERTIONS)
 else()
 	set(EMCC_ARGS 
@@ -148,6 +167,8 @@ set(EMCC_GLUE_ARGS
   -I${JoltPhysics_SOURCE_DIR}/..
   -Wall
   -std=c++17
+  -fno-rtti
+  -fno-exceptions
   ${MULTI_THREADED_FLAG}
   -DJPH_OBJECT_LAYER_BITS=32
   -DJPH_DISABLE_CUSTOM_ALLOCATOR
@@ -193,6 +214,7 @@ add_custom_command(
 	BYPRODUCTS parser.out WebIDLGrammar.pkl
 	COMMAND cat ${JOLT_IDL_FILE} > jolt.idl
 	COMMAND ${PYTHON} ${WEBIDL_BINDER_SCRIPT} jolt.idl glue
+	COMMAND ${REMOVE_THREAD_LOCAL}
 	DEPENDS ${JOLT_IDL_FILE}
 	COMMENT "Generating JoltPhysics.js bindings"
 	VERBATIM)
@@ -209,27 +231,27 @@ if (NOT BUILD_WASM_COMPAT_ONLY)
 	if (NOT ENABLE_MULTI_THREADING # Not compatible with multi threading due to error: 'void wasm::I64ToI32Lowering::visitStore(Store *): Assertion `!curr->isAtomic && "atomic store not implemented"' failed.'
 		AND NOT ENABLE_SIMD) # Not compatible with SIMD due to error: 'unhandled unaligned load'
 		add_custom_command(
-			OUTPUT ${OUTPUT_FOLDER}jolt-physics.js
-			COMMAND emcc glue.o $<TARGET_FILE:Jolt> ${EMCC_JS_ARGS} -o ${OUTPUT_FOLDER}jolt-physics.js
+			OUTPUT ${OUTPUT_BASE_NAME}.js
+			COMMAND emcc glue.o $<TARGET_FILE:Jolt> ${EMCC_JS_ARGS} -o ${OUTPUT_BASE_NAME}.js
 			DEPENDS jolt-bindings ${JOLT_FRONT_MATTER_FILE} ${JOLT_TARGETS} ${JOLT_IDL_FILE} ${JOLT_HEADER_FILE}
 			COMMENT "Building JoltPhysics.js javascript"
 			VERBATIM)
-		add_custom_target(jolt-javascript ALL DEPENDS ${OUTPUT_FOLDER}jolt-physics.js)
+		add_custom_target(jolt-javascript ALL DEPENDS ${OUTPUT_BASE_NAME}.js)
 	endif()
 
 	add_custom_command(
-		OUTPUT ${OUTPUT_FOLDER}jolt-physics.wasm.js ${OUTPUT_FOLDER}jolt-physics.wasm.wasm
-		COMMAND emcc glue.o $<TARGET_FILE:Jolt> ${EMCC_WASM_ARGS} -o ${OUTPUT_FOLDER}jolt-physics.wasm.js
+		OUTPUT ${OUTPUT_BASE_NAME}.wasm.js ${OUTPUT_BASE_NAME}.wasm.wasm
+		COMMAND emcc glue.o $<TARGET_FILE:Jolt> ${EMCC_WASM_ARGS} -o ${OUTPUT_BASE_NAME}.wasm.js
 		DEPENDS jolt-bindings ${JOLT_FRONT_MATTER_FILE} ${JOLT_TARGETS} ${JOLT_IDL_FILE} ${JOLT_HEADER_FILE}
 		COMMENT "Building JoltPhysics.js webassembly"
 		VERBATIM)
-	add_custom_target(jolt-wasm ALL DEPENDS ${OUTPUT_FOLDER}jolt-physics.wasm.js ${OUTPUT_FOLDER}jolt-physics.wasm.wasm)
+	add_custom_target(jolt-wasm ALL DEPENDS ${OUTPUT_BASE_NAME}.wasm.js ${OUTPUT_BASE_NAME}.wasm.wasm)
 endif()
 
 add_custom_command(
-	OUTPUT ${OUTPUT_FOLDER}jolt-physics.wasm-compat.js
-	COMMAND emcc glue.o $<TARGET_FILE:Jolt> ${EMCC_WASM_COMPAT_ARGS} -o ${OUTPUT_FOLDER}jolt-physics.wasm-compat.js
+	OUTPUT ${OUTPUT_BASE_NAME}.wasm-compat.js
+	COMMAND emcc glue.o $<TARGET_FILE:Jolt> ${EMCC_WASM_COMPAT_ARGS} -o ${OUTPUT_BASE_NAME}.wasm-compat.js
 	DEPENDS jolt-bindings ${JOLT_FRONT_MATTER_FILE} ${JOLT_TARGETS} ${JOLT_IDL_FILE} ${JOLT_HEADER_FILE}
 	COMMENT "Building JoltPhysics.js compat webassembly"
 	VERBATIM)
-add_custom_target(jolt-wasm-compat ALL DEPENDS ${OUTPUT_FOLDER}jolt-physics.wasm-compat.js)
+add_custom_target(jolt-wasm-compat ALL DEPENDS ${OUTPUT_BASE_NAME}.wasm-compat.js)

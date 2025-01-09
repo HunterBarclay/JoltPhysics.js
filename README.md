@@ -13,18 +13,20 @@ Go to the [demos page](https://jrouwe.github.io/JoltPhysics.js/) to see the proj
 
 ## Using
 
-This library comes in 3 flavours:
+This library comes in 5 flavours:
 - `wasm-compat` - A WASM version with the WASM file (encoded in base64) embedded in the bundle
 - `wasm` - A WASM version with a separate WASM file
 - `asm` - A JavaScript version that uses [asm.js](https://developer.mozilla.org/en-US/docs/Games/Tools/asm.js)
+- `wasm-compat-multithread` - Same as `wasm-compat` but with multi threading enabled.
+- `wasm-multithread` - Same as `wasm` but with multi threading enabled.
 
-See [falling_shapes.html](Examples/falling_shapes.html) for a example on how to use the library.
+See [falling_shapes.html](Examples/falling_shapes.html) for an example on how to use the library.
 
 ### Documentation
 
 The interface of the library is the same as the C++ interface of JoltPhysics, this means that you can use the [C++ documentation](https://jrouwe.github.io/JoltPhysics/) as reference.
 
-Almost all of the Jolt interface has been exposed. Check [JoltJS.idl](https://github.com/jrouwe/JoltPhysics.js/blob/main/JoltJS.idl) if a particular interface has been exposed. If not, edit [JoltJS.idl](https://github.com/jrouwe/JoltPhysics.js/blob/main/JoltJS.idl) and [JoltJS.h](https://github.com/jrouwe/JoltPhysics.js/blob/main/JoltJS.h) and send a pull request, or open an issue.
+Almost the entire Jolt interface has been exposed. Check [JoltJS.idl](https://github.com/jrouwe/JoltPhysics.js/blob/main/JoltJS.idl) if a particular interface has been exposed. If not, edit [JoltJS.idl](https://github.com/jrouwe/JoltPhysics.js/blob/main/JoltJS.idl) and [JoltJS.h](https://github.com/jrouwe/JoltPhysics.js/blob/main/JoltJS.h) and send a pull request, or open an issue.
 
 ### Installation
 
@@ -46,6 +48,12 @@ import Jolt from 'jolt-physics/wasm';
 
 // asm.js
 import Jolt from 'jolt-physics/asm';
+
+// WASM embedded in the bundle, multithread enabled
+import Jolt from 'jolt-physics/wasm-compat-multithread';
+
+// WASM, multithread enabled
+import Jolt from 'jolt-physics/wasm-multithread';
 ```
 
 You can also import esm bundles with unpkg:
@@ -92,20 +100,20 @@ Additional options that can be provided to ```build.sh```:
 * ```-DENABLE_MEMORY_PROFILER=ON``` will enable memory tracking to detect leaks.
 * ```-DDOUBLE_PRECISION=ON``` will enable the double precision mode. This allows worlds larger than a couple of km.
 * ```-DENABLE_SIMD=ON``` will enable SIMD instructions. Safari 16.4 was the last major browser to support this (in March 2023).
-* ```-DENABLE_MULTI_THREADING=ON``` will enable multi threading. Note that due to a bug in Safari this currently doesn't work in that brower. It is also incompatible with any JavaScript callback function that are triggered from web workers. See [this](https://github.com/jrouwe/JoltPhysics.js/discussions/110) ticket.
 * ```-DBUILD_WASM_COMPAT_ONLY=ON``` speeds up the build by only compiling the WASM compat version which the examples use.
 
 ## Running
 
-By default the examples use the WASM version of Jolt. This requires serving the html file using a web server rather than opening the html file directly.
+By default the examples use the WASM compat version of Jolt. This requires serving the html file using a web server rather than opening the html file directly.
 
-Go open a terminal in this folder and run the following commands:
+Open a terminal in this folder and run the following commands:
 
 ```
-cd serveexamples
 npm install
-npm run serve
+npm run examples
 ```
+
+Then navigate to: http://localhost:3000/
 
 If you need to debug the C++ code take a look at [WASM debugging](https://developer.chrome.com/blog/wasm-debugging-2020/).
 
@@ -137,6 +145,7 @@ Almost everything else can be destroyed straight after it has been passed to Jol
 ## Projects using JoltPhysics.js
 
 * [Babylon.js plugin](https://github.com/PhoenixIllusion/babylonjs-jolt-physics-plugin) - A plugin that replaces the default physics engine with Jolt.
+* [GDevelop](https://gdevelop.io/) - An Open-source, cross-platform 2D/3D/multiplayer game engine. See [announcement](https://github.com/4ian/GDevelop/releases/tag/v5.5.220).
 * [react-three-jolt](https://github.com/pmndrs/react-three-jolt) - Wraps Jolt to make it easy to use in react-three-fiber.
 * [r3f-jolt](https://github.com/sajal353/r3f-jolt) - Another wrapper for react-three-fiber.
 

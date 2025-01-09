@@ -20,6 +20,7 @@
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
 #include "Jolt/Physics/Collision/Shape/TaperedCapsuleShape.h"
 #include "Jolt/Physics/Collision/Shape/CylinderShape.h"
+#include "Jolt/Physics/Collision/Shape/TaperedCylinderShape.h"
 #include "Jolt/Physics/Collision/Shape/ConvexHullShape.h"
 #include "Jolt/Physics/Collision/Shape/StaticCompoundShape.h"
 #include "Jolt/Physics/Collision/Shape/MutableCompoundShape.h"
@@ -28,16 +29,19 @@
 #include "Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h"
 #include "Jolt/Physics/Collision/Shape/MeshShape.h"
 #include "Jolt/Physics/Collision/Shape/HeightFieldShape.h"
+#include "Jolt/Physics/Collision/Shape/PlaneShape.h"
+#include "Jolt/Physics/Collision/Shape/EmptyShape.h"
 #include "Jolt/Physics/Collision/CollisionCollectorImpl.h"
 #include "Jolt/Physics/Collision/GroupFilterTable.h"
 #include "Jolt/Physics/Collision/CollideShape.h"
+#include "Jolt/Physics/Collision/SimShapeFilter.h"
 #include "Jolt/Physics/Constraints/FixedConstraint.h"
 #include "Jolt/Physics/Constraints/PointConstraint.h"
 #include "Jolt/Physics/Constraints/DistanceConstraint.h"
 #include "Jolt/Physics/Constraints/HingeConstraint.h"
 #include "Jolt/Physics/Constraints/ConeConstraint.h"
 #include "Jolt/Physics/Constraints/PathConstraint.h"
-#include "Jolt/Physics/Constraints/PathConstraintPath.h"
+#include "Jolt/Physics/Constraints/PathConstraintPathHermite.h"
 #include "Jolt/Physics/Constraints/PulleyConstraint.h"
 #include "Jolt/Physics/Constraints/SliderConstraint.h"
 #include "Jolt/Physics/Constraints/SwingTwistConstraint.h"
@@ -94,6 +98,10 @@ using QuatMemRef = Quat;
 using ArrayQuat = Array<Quat>;
 using Mat44MemRef = Mat44;
 using ArrayMat44 = Array<Mat44>;
+using BodyIDMemRef = BodyID;
+using ArrayBodyID = Array<BodyID>;
+using BodyPtrMemRef = Body *;
+using ArrayBodyPtr = Array<Body *>;
 using FloatMemRef = float;
 using UintMemRef = uint;
 using Uint8MemRef = uint8;
@@ -150,6 +158,9 @@ using RagdollAdditionalConstraint = RagdollSettings::AdditionalConstraint;
 using ArrayRagdollPart = Array<RagdollPart>;
 using ArrayRagdollAdditionalConstraint = Array<RagdollAdditionalConstraint>;
 using CompoundShapeSubShape = CompoundShape::SubShape;
+using BodyInterface_AddState = void;
+using CharacterVirtualContact = CharacterVirtual::Contact;
+using ArrayCharacterVirtualContact = Array<CharacterVirtualContact>;
 
 // Alias for EBodyType values to avoid clashes
 constexpr EBodyType EBodyType_RigidBody = EBodyType::RigidBody;
@@ -174,6 +185,8 @@ constexpr EShapeType EShapeType_Compound = EShapeType::Compound;
 constexpr EShapeType EShapeType_Decorated = EShapeType::Decorated;
 constexpr EShapeType EShapeType_Mesh = EShapeType::Mesh;
 constexpr EShapeType EShapeType_HeightField = EShapeType::HeightField;
+constexpr EShapeType EShapeType_Plane = EShapeType::Plane;
+constexpr EShapeType EShapeType_Empty = EShapeType::Empty;
 
 // Alias for EShapeSubType values to avoid clashes
 constexpr EShapeSubType EShapeSubType_Sphere = EShapeSubType::Sphere;
@@ -181,6 +194,7 @@ constexpr EShapeSubType EShapeSubType_Box = EShapeSubType::Box;
 constexpr EShapeSubType EShapeSubType_Capsule = EShapeSubType::Capsule;
 constexpr EShapeSubType EShapeSubType_TaperedCapsule = EShapeSubType::TaperedCapsule;
 constexpr EShapeSubType EShapeSubType_Cylinder = EShapeSubType::Cylinder;
+constexpr EShapeSubType EShapeSubType_TaperedCylinder = EShapeSubType::TaperedCylinder;
 constexpr EShapeSubType EShapeSubType_ConvexHull = EShapeSubType::ConvexHull;
 constexpr EShapeSubType EShapeSubType_StaticCompound = EShapeSubType::StaticCompound;
 constexpr EShapeSubType EShapeSubType_MutableCompound = EShapeSubType::MutableCompound;
@@ -189,6 +203,8 @@ constexpr EShapeSubType EShapeSubType_Scaled = EShapeSubType::Scaled;
 constexpr EShapeSubType EShapeSubType_OffsetCenterOfMass = EShapeSubType::OffsetCenterOfMass;
 constexpr EShapeSubType EShapeSubType_Mesh = EShapeSubType::Mesh;
 constexpr EShapeSubType EShapeSubType_HeightField = EShapeSubType::HeightField;
+constexpr EShapeSubType EShapeSubType_Plane = EShapeSubType::Plane;
+constexpr EShapeSubType EShapeSubType_Empty = EShapeSubType::Empty;
 
 // Alias for EConstraintSpace values to avoid clashes
 constexpr EConstraintSpace EConstraintSpace_LocalToBodyCOM = EConstraintSpace::LocalToBodyCOM;
@@ -361,6 +377,7 @@ public:
 	uint					mMaxBodyPairs = 65536;
 	uint					mMaxContactConstraints = 10240;
 	uint					mTempAllocatorSize = 10 * 1024 * 1024;
+	uint					mMaxWorkerThreads = 16;
 	BroadPhaseLayerInterface *mBroadPhaseLayerInterface = nullptr;
 	ObjectVsBroadPhaseLayerFilter *mObjectVsBroadPhaseLayerFilter = nullptr;
 	ObjectLayerPairFilter *	mObjectLayerPairFilter = nullptr;
@@ -386,6 +403,10 @@ public:
 		// Init temp allocator
 		mTempAllocator = new TempAllocatorImpl(inSettings.mTempAllocatorSize);
 
+		// Limit to 16 threads since we limit the webworker thread pool size to this as well
+		int num_workers = min<int>(thread::hardware_concurrency() - 1, min<int>(inSettings.mMaxWorkerThreads, 16));
+		mJobSystem = new JobSystemThreadPool(cMaxPhysicsJobs, cMaxPhysicsBarriers, num_workers); 
+
 		// Check required objects
 		if (inSettings.mBroadPhaseLayerInterface == nullptr || inSettings.mObjectVsBroadPhaseLayerFilter == nullptr || inSettings.mObjectLayerPairFilter == nullptr)
 			Trace("Error: BroadPhaseLayerInterface, ObjectVsBroadPhaseLayerFilter and ObjectLayerPairFilter must be provided");
@@ -409,6 +430,7 @@ public:
 		delete mBroadPhaseLayerInterface;
 		delete mObjectVsBroadPhaseLayerFilter;
 		delete mObjectLayerPairFilter;
+		delete mJobSystem;
 		delete mTempAllocator;
 		delete Factory::sInstance;
 		Factory::sInstance = nullptr;
@@ -418,7 +440,7 @@ public:
 	/// Step the world
 	void					Step(float inDeltaTime, int inCollisionSteps)
 	{
-		mPhysicsSystem->Update(inDeltaTime, inCollisionSteps, mTempAllocator, &mJobSystem);
+		mPhysicsSystem->Update(inDeltaTime, inCollisionSteps, mTempAllocator, mJobSystem);
 	}
 
 	/// Access to the physics system
@@ -463,8 +485,8 @@ public:
 	}
 
 private:
-	TempAllocatorImpl *		mTempAllocator;
-	JobSystemThreadPool		mJobSystem { cMaxPhysicsJobs, cMaxPhysicsBarriers, min<int>(thread::hardware_concurrency() - 1, 16) }; // Limit to 16 threads since we limit the webworker thread pool size to this as well
+	TempAllocatorImpl *		mTempAllocator = nullptr;
+	JobSystemThreadPool *	mJobSystem = nullptr;
 	BroadPhaseLayerInterface *mBroadPhaseLayerInterface = nullptr;
 	ObjectVsBroadPhaseLayerFilter *mObjectVsBroadPhaseLayerFilter = nullptr;
 	ObjectLayerPairFilter *	mObjectLayerPairFilter = nullptr;
@@ -581,7 +603,9 @@ class CharacterContactListenerEm: public CharacterContactListener
 public:
 	// JavaScript compatible virtual functions
 	virtual void			OnContactAdded(const CharacterVirtual *inCharacter, const BodyID &inBodyID2, const SubShapeID &inSubShapeID2, const RVec3 *inContactPosition, const Vec3 *inContactNormal, CharacterContactSettings &ioSettings) = 0;
+	virtual void			OnCharacterContactAdded(const CharacterVirtual *inCharacter, const CharacterVirtual *inOtherCharacter, const SubShapeID &inSubShapeID2, const RVec3 *inContactPosition, const Vec3 *inContactNormal, CharacterContactSettings &ioSettings) = 0;
 	virtual void			OnContactSolve(const CharacterVirtual *inCharacter, const BodyID &inBodyID2, const SubShapeID &inSubShapeID2, const RVec3 *inContactPosition, const Vec3 *inContactNormal, const Vec3 *inContactVelocity, const PhysicsMaterial *inContactMaterial, const Vec3 *inCharacterVelocity, Vec3 &ioNewCharacterVelocity) = 0;
+	virtual void			OnCharacterContactSolve(const CharacterVirtual *inCharacter, const CharacterVirtual *inOtherCharacter, const SubShapeID &inSubShapeID2, const RVec3 *inContactPosition, const Vec3 *inContactNormal, const Vec3 *inContactVelocity, const PhysicsMaterial *inContactMaterial, const Vec3 *inCharacterVelocity, Vec3 &ioNewCharacterVelocity) = 0;
 
 	// Functions that call the JavaScript compatible virtual functions
 	virtual void			OnContactAdded(const CharacterVirtual *inCharacter, const BodyID &inBodyID2, const SubShapeID &inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings &ioSettings) override
@@ -589,9 +613,19 @@ public:
 		OnContactAdded(inCharacter, inBodyID2, inSubShapeID2, &inContactPosition, &inContactNormal, ioSettings);
 	}
 
+	virtual void			OnCharacterContactAdded(const CharacterVirtual *inCharacter, const CharacterVirtual *inOtherCharacter, const SubShapeID &inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, CharacterContactSettings &ioSettings) override
+	{ 
+		OnCharacterContactAdded(inCharacter, inOtherCharacter, inSubShapeID2, &inContactPosition, &inContactNormal, ioSettings);
+	}
+
 	virtual void			OnContactSolve(const CharacterVirtual *inCharacter, const BodyID &inBodyID2, const SubShapeID &inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, Vec3Arg inContactVelocity, const PhysicsMaterial *inContactMaterial, Vec3Arg inCharacterVelocity, Vec3 &ioNewCharacterVelocity) override
 	{ 
 		OnContactSolve(inCharacter, inBodyID2, inSubShapeID2, &inContactPosition, &inContactNormal, &inContactVelocity, inContactMaterial, &inCharacterVelocity, ioNewCharacterVelocity);
+	}
+
+	virtual void			OnCharacterContactSolve(const CharacterVirtual *inCharacter, const CharacterVirtual *inOtherCharacter, const SubShapeID &inSubShapeID2, RVec3Arg inContactPosition, Vec3Arg inContactNormal, Vec3Arg inContactVelocity, const PhysicsMaterial *inContactMaterial, Vec3Arg inCharacterVelocity, Vec3 &ioNewCharacterVelocity) override
+	{ 
+		OnCharacterContactSolve(inCharacter, inOtherCharacter, inSubShapeID2, &inContactPosition, &inContactNormal, &inContactVelocity, inContactMaterial, &inCharacterVelocity, ioNewCharacterVelocity);
 	}
 };
 
@@ -604,10 +638,10 @@ public:
 		mInstance = inVehicleConstraint;
 	}
 
-	virtual void			OnStep(float inDeltaTime, PhysicsSystem &inPhysicsSystem) override
+	virtual void			OnStep(const PhysicsStepListenerContext &inContext) override
 	{
-		PhysicsStepListener* instance = mInstance;
-		instance->OnStep(inDeltaTime, inPhysicsSystem);
+		PhysicsStepListener *instance = mInstance;
+		instance->OnStep(inContext);
 	}
 
 private:
@@ -658,21 +692,21 @@ public:
 			ioLongitudinalFriction = GetCombinedFriction(inWheelIndex, ETireFrictionDirection_Longitudinal, ioLongitudinalFriction, inBody2, inSubShapeID2);
 			ioLateralFriction = GetCombinedFriction(inWheelIndex, ETireFrictionDirection_Lateral, ioLateralFriction, inBody2, inSubShapeID2);
 		});
-		inConstraint.SetPreStepCallback([this](VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem) {
-			OnPreStepCallback(inVehicle, inDeltaTime, inPhysicsSystem);
+		inConstraint.SetPreStepCallback([this](VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext) {
+			OnPreStepCallback(inVehicle, inContext);
 		});
-		inConstraint.SetPostCollideCallback([this](VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem) {
-			OnPostCollideCallback(inVehicle, inDeltaTime, inPhysicsSystem);
+		inConstraint.SetPostCollideCallback([this](VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext) {
+			OnPostCollideCallback(inVehicle, inContext);
 		});
-		inConstraint.SetPostStepCallback([this](VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem) {
-			OnPostStepCallback(inVehicle, inDeltaTime, inPhysicsSystem);
+		inConstraint.SetPostStepCallback([this](VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext) {
+			OnPostStepCallback(inVehicle, inContext);
 		});
 	}
 
 	virtual float			GetCombinedFriction(unsigned int inWheelIndex, ETireFrictionDirection inTireFrictionDirection, float inTireFriction, const Body &inBody2, const SubShapeID &inSubShapeID2) = 0;
-	virtual void			OnPreStepCallback(VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem) = 0;
-	virtual void			OnPostCollideCallback(VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem) = 0;
-	virtual void			OnPostStepCallback(VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem) = 0;
+	virtual void			OnPreStepCallback(VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext) = 0;
+	virtual void			OnPostCollideCallback(VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext) = 0;
+	virtual void			OnPostStepCallback(VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext) = 0;
 };
 
 /// The tire max impulse callback returns multiple parameters, so we need to store them in a class
@@ -723,6 +757,25 @@ public:
 
 	virtual float 			GetClosestPoint(const Vec3 *inPosition, float inFractionHint) const = 0;
 	virtual void 			GetPointOnPath(float inFraction, Vec3 *outPathPosition, Vec3 *outPathTangent, Vec3 *outPathNormal, Vec3 *outPathBinormal) const = 0;
+};
+
+class StateRecorderEm : public StateRecorder
+{
+public:
+	// Unfortunately WebIDL doesn't support size_t so we need to map it to unsigned int
+	virtual void		WriteBytes(const void *inData, unsigned int inNumBytes) = 0;
+	virtual void		ReadBytes(void *outData, unsigned int inNumBytes) = 0;
+
+private:
+	virtual void		WriteBytes(const void *inData, size_t inNumBytes) override
+	{
+		WriteBytes(inData, (unsigned int)inNumBytes);
+	}
+
+	virtual void		ReadBytes(void *outData, size_t inNumBytes) override
+	{
+		ReadBytes(outData, (unsigned int)inNumBytes);
+	}
 };
 
 class HeightFieldShapeConstantValues 
